@@ -2,12 +2,6 @@
 
 TAPS is a learned proposal selector for DDTree-style speculative decoding. Given a DFlash block-parallel draft model, TAPS builds a large candidate pool from draft logits, scores each candidate node with a lightweight scorer, and selects a compact, high-quality verification tree for the target model. The result is higher acceptance length with minimal throughput overhead.
 
-## Supported Models
-
-| Target model | Draft model |
-| --- | --- |
-| `Qwen/Qwen3-4B` | `Huang2020/Qwen3-4B-DFlash-b16` |
-
 ## Method
 
 Each speculative decoding round proceeds as:
@@ -44,16 +38,15 @@ export DRAFT_MODEL=/path/to/Qwen3-4B-DFlash-b16
 export SCORER_CKPT=/path/to/taps_scorer/best.pt
 ```
 
-### Reproduce the best configuration (hybrid, pool=768/48, verify=64)
+### Run TAPS (hybrid selection)
 
 ```bash
 python benchmark.py \
   --model-name-or-path "$TARGET_MODEL" \
   --draft-name-or-path "$DRAFT_MODEL" \
   --dataset gsm8k \
-  --max-samples 64 \
   --shuffle-seed 2026 \
-  --max-new-tokens 512 \
+  --max-new-tokens 2048 \
   --save-path outputs/taps_hybrid_gsm8k.pt \
   --proposal-mode joint \
   --tree-budget 64 \
@@ -63,7 +56,7 @@ python benchmark.py \
   --candidate-pool-sequences 48 \
   --candidate-pool-source taps_lite \
   --min-verify-nodes 4 \
-  --max-verify-nodes 64 \
+  --max-verify-nodes 192 \
   --min-verify-sequences 4 \
   --max-verify-sequences 64 \
   --no-fallback-to-ddtree \
@@ -71,29 +64,20 @@ python benchmark.py \
   --hybrid
 ```
 
-The `--hybrid` flag enables the hybrid selection pipeline (CPU beam search + GPU scoring), which is the recommended configuration. To use the hybrid path programmatically:
+The `--hybrid` flag enables the hybrid selection pipeline (CPU beam search + GPU scoring).
 
-```python
-from joint.taps_lite_scorer import load_taps_lite_scorer
-
-scorer, _ = load_taps_lite_scorer("path/to/best.pt", device=device)
-scorer.set_vocab_embeds(target_model.model.embed_tokens.weight)
-scorer._use_hybrid = True
-```
-
-### Run DDTree-64 baseline
+### Run DDTree baseline
 
 ```bash
 python benchmark.py \
   --model-name-or-path "$TARGET_MODEL" \
   --draft-name-or-path "$DRAFT_MODEL" \
   --dataset gsm8k \
-  --max-samples 64 \
   --shuffle-seed 2026 \
-  --max-new-tokens 512 \
-  --save-path outputs/ddtree64_gsm8k.pt \
+  --max-new-tokens 2048 \
+  --save-path outputs/ddtree_gsm8k.pt \
   --proposal-mode ddtree \
-  --tree-budget 64
+  --tree-budget 512
 ```
 
 ## Datasets
@@ -102,11 +86,13 @@ The benchmark loader supports the following datasets:
 
 | Dataset | Source | Domain |
 | --- | --- | --- |
+| `aime25` | [MathArena/aime_2025](https://huggingface.co/datasets/MathArena/aime_2025) | Math reasoning |
 | `gsm8k` | [openai/gsm8k](https://huggingface.co/datasets/openai/gsm8k) | Math reasoning |
-| `humaneval` | [openai/openai_humaneval](https://huggingface.co/datasets/openai/openai_humaneval) | Code generation |
-| `mbpp` | [google-research-datasets/mbpp](https://huggingface.co/datasets/google-research-datasets/mbpp) | Code generation |
-| `mt-bench` | [lmsys/mt_bench_human_judgments](https://huggingface.co/datasets/lmsys/mt_bench_human_judgments) | Multi-turn chat |
 | `math500` | [HuggingFaceH4/MATH-500](https://huggingface.co/datasets/HuggingFaceH4/MATH-500) | Math reasoning |
+| `humaneval` | [openai/openai_humaneval](https://huggingface.co/datasets/openai/openai_humaneval) | Code generation |
+| `livecodebench` | [livecodebench/code_generation_lite](https://huggingface.co/datasets/livecodebench/code_generation_lite) | Code generation |
+| `mbpp` | [google-research-datasets/mbpp](https://huggingface.co/datasets/google-research-datasets/mbpp) | Code generation |
+| `mt-bench` | [HuggingFaceH4/mt_bench_prompts](https://huggingface.co/datasets/HuggingFaceH4/mt_bench_prompts) | Multi-turn dialogue |
 
 Datasets are automatically downloaded from Hugging Face on first use. Alternatively, place local copies under a directory and set `TAPS_HF_ASSETS` to point to it.
 
@@ -179,27 +165,25 @@ Run the full benchmark comparing DDTree-64 baseline with TAPS (hybrid selection)
 ```bash
 export SCORER_CKPT=outputs/scorer/best.pt
 
-for DATASET in gsm8k humaneval mbpp mt-bench; do
-  # DDTree-64 baseline
+for DATASET in aime25 gsm8k math500 humaneval livecodebench mbpp mt-bench; do
+  # DDTree baseline
   python benchmark.py \
     --model-name-or-path "$TARGET_MODEL" \
     --draft-name-or-path "$DRAFT_MODEL" \
     --dataset $DATASET \
-    --max-samples 64 \
     --shuffle-seed 2026 \
-    --max-new-tokens 512 \
-    --save-path outputs/ddtree64_${DATASET}.pt \
+    --max-new-tokens 2048 \
+    --save-path outputs/ddtree_${DATASET}.pt \
     --proposal-mode ddtree \
-    --tree-budget 64
+    --tree-budget 512
 
   # TAPS hybrid
   python benchmark.py \
     --model-name-or-path "$TARGET_MODEL" \
     --draft-name-or-path "$DRAFT_MODEL" \
     --dataset $DATASET \
-    --max-samples 64 \
     --shuffle-seed 2026 \
-    --max-new-tokens 512 \
+    --max-new-tokens 2048 \
     --save-path outputs/taps_hybrid_${DATASET}.pt \
     --proposal-mode joint \
     --tree-budget 64 \
@@ -209,7 +193,7 @@ for DATASET in gsm8k humaneval mbpp mt-bench; do
     --candidate-pool-sequences 48 \
     --candidate-pool-source taps_lite \
     --min-verify-nodes 4 \
-    --max-verify-nodes 64 \
+    --max-verify-nodes 192 \
     --min-verify-sequences 4 \
     --max-verify-sequences 64 \
     --no-fallback-to-ddtree \
@@ -231,22 +215,6 @@ The `TAPSLiteScorer` has 176,894 trainable parameters:
 | norms + depth_embed | — | 636 | LayerNorm, depth embedding |
 
 The scorer uses frozen target-model token embeddings (via `token_proj`) and draft-model hidden states (via `hidden_proj`). Only the projection layers and MLPs are trained. The `edge_mlp` input concatenates: child embedding (32), parent embedding (32), depth embedding (8), scalar features (7), hidden projection (32) = 111 dimensions.
-
-## Results
-
-All results use Qwen3-4B as target, Qwen3-4B-DFlash-b16 as draft, `shuffle_seed=2026`, `max_new_tokens=512`, and greedy decoding (`temperature=0.0`). The TAPS configuration is hybrid selection with `pool=768/48`, `verify=64`, and the v5 scorer.
-
-### TAPS (hybrid) vs DDTree-64
-
-| Dataset | N | DDTree-64 acc | DDTree-64 tok/s | TAPS acc | TAPS tok/s | Δacc | Δtps |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| gsm8k | 64 | 8.08 | 200.4 | 8.75 | 203.1 | +8.2% | +1.3% |
-| humaneval | 64 | 8.48 | 211.2 | 8.98 | 209.7 | +5.9% | −0.7% |
-| mbpp | 64 | 7.88 | 195.2 | 8.49 | 196.8 | +7.7% | +0.8% |
-| mt-bench | 40 | 4.78 | 119.5 | 5.18 | 121.5 | +8.4% | +1.7% |
-| **Overall** | — | 7.31 | 182.1 | 7.85 | 183.4 | **+7.4%** | **+0.7%** |
-
-TAPS improves acceptance length by +7.4% on average across all four datasets while maintaining positive throughput (+0.7%), with only 2.6 ms per-round scorer overhead.
 
 ## Project Structure
 

@@ -276,6 +276,7 @@ def main() -> None:
                         joint_checkpoint=args.joint_checkpoint,
                         tiny_scorer_checkpoint=args.tiny_scorer_checkpoint,
                         joint_config=joint_config,
+                        use_hybrid=args.hybrid,
                     )
 
             spec_response = response[methods_to_run[-1]]
