@@ -3,6 +3,8 @@
   <a href="https://arxiv.org/abs/2606.00487"><img src="https://img.shields.io/badge/Paper-arXiv%3A2606.00487-b31b1b" alt="Paper"></a>
 </p>
 
+This is the official implementation of our paper [TAPS: Target-Aware Prefix Tree Selection for Diffusion-Drafted Speculative Decoding](https://arxiv.org/abs/2606.00487).
+
 TAPS is a learned proposal selector for DDTree-style speculative decoding. Given a DFlash block-parallel draft model, TAPS builds a large candidate pool from draft logits, scores each candidate node with a lightweight scorer, and selects a compact, high-quality verification tree for the target model. The result is higher acceptance length with minimal throughput overhead.
 
 ![TAPS pipeline](assets/pipeline.png)
