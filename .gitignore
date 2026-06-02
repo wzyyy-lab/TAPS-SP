@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Outputs and checkpoints
+outputs/
+runs/
+logs/
+*.npy
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Environment
+.venv/
+venv/
+
+# Backup files
+*.orig
+
+# HuggingFace assets cache
+hf_assets/
