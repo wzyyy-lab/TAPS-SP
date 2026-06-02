@@ -1,6 +1,11 @@
 # TAPS: Target-Aware Prefix Tree Selection for Speculative Decoding
+<p align="center">
+  <a href="https://arxiv.org/abs/2606.00487"><img src="https://img.shields.io/badge/Paper-arXiv%3A2606.00487-b31b1b" alt="Paper"></a>
+</p>
 
 TAPS is a learned proposal selector for DDTree-style speculative decoding. Given a DFlash block-parallel draft model, TAPS builds a large candidate pool from draft logits, scores each candidate node with a lightweight scorer, and selects a compact, high-quality verification tree for the target model. The result is higher acceptance length with minimal throughput overhead.
+
+![TAPS pipeline](assets/pipeline.png)
 
 ## Method
 
@@ -98,27 +103,14 @@ Datasets are automatically downloaded from Hugging Face on first use. Alternativ
 
 ## Reproduce from Scratch
 
-The full pipeline has three stages: trace collection, scorer training, and benchmarking.
+The full pipeline has three stages: trace collection, scorer training, and benchmarking. Shell scripts are provided under `scripts/` for each stage.
 
 ### Step 1: Collect Traces
 
 Traces record draft logits, candidate tries, and target-model acceptance labels for training the scorer.
 
 ```bash
-for DATASET in alpaca sharegpt codealpaca math; do
-  python scripts/collect_trace.py \
-    --target-model "$TARGET_MODEL" \
-    --draft-model "$DRAFT_MODEL" \
-    --datasets "$DATASET" \
-    --tree-budget-baseline 512 \
-    --topk-collect 512 \
-    --candidate-pool-nodes 512 \
-    --candidate-pool-sequences 512 \
-    --max-samples 200 \
-    --shuffle-seed 2026 \
-    --max-new-tokens 512 \
-    --output outputs/traces/$DATASET
-done
+bash scripts/collect_traces.sh
 ```
 
 This collects 200 prompts per dataset (800 total) from four diverse domains. Each prompt produces multiple decoding rounds, yielding thousands of training records. On a single A800 GPU, expect ~2 hours per dataset.
@@ -137,69 +129,17 @@ Training datasets for traces:
 The `TAPSLiteScorer` (177K parameters) is trained with two losses: KL divergence on per-parent conditional distributions + BCE on reach propagation.
 
 ```bash
-python scripts/train_scorer.py \
-  --traces outputs/traces \
-  --output outputs/scorer \
-  --target-model "$TARGET_MODEL" \
-  --epochs 30 \
-  --lr 3e-3 \
-  --weight-decay 1e-4 \
-  --hidden-dim 64 \
-  --batch-records 64 \
-  --depth-embed-dim 8 \
-  --token-proj-dim 32 \
-  --hidden-proj-dim 32 \
-  --scalar-dim 7 \
-  --draft-hidden-dim 2560 \
-  --lambda-reach 0.5 \
-  --val-fraction 0.1 \
-  --seed 2026
+bash scripts/train.sh
 ```
 
 Training takes ~10 minutes on a single GPU. The best checkpoint is saved to `outputs/scorer/best.pt`.
 
 ### Step 3: Benchmark
 
-Run the full benchmark comparing DDTree-64 baseline with TAPS (hybrid selection):
+Run the full benchmark comparing DDTree baseline with TAPS (hybrid selection) on all 7 datasets:
 
 ```bash
-export SCORER_CKPT=outputs/scorer/best.pt
-
-for DATASET in aime25 gsm8k math500 humaneval livecodebench mbpp mt-bench; do
-  # DDTree baseline
-  python benchmark.py \
-    --model-name-or-path "$TARGET_MODEL" \
-    --draft-name-or-path "$DRAFT_MODEL" \
-    --dataset $DATASET \
-    --shuffle-seed 2026 \
-    --max-new-tokens 2048 \
-    --save-path outputs/ddtree_${DATASET}.pt \
-    --proposal-mode ddtree \
-    --tree-budget 512
-
-  # TAPS hybrid
-  python benchmark.py \
-    --model-name-or-path "$TARGET_MODEL" \
-    --draft-name-or-path "$DRAFT_MODEL" \
-    --dataset $DATASET \
-    --shuffle-seed 2026 \
-    --max-new-tokens 2048 \
-    --save-path outputs/taps_hybrid_${DATASET}.pt \
-    --proposal-mode joint \
-    --tree-budget 64 \
-    --tiny-scorer-checkpoint "$SCORER_CKPT" \
-    --joint-topk 64 \
-    --candidate-pool-nodes 768 \
-    --candidate-pool-sequences 48 \
-    --candidate-pool-source taps_lite \
-    --min-verify-nodes 4 \
-    --max-verify-nodes 192 \
-    --min-verify-sequences 4 \
-    --max-verify-sequences 64 \
-    --no-fallback-to-ddtree \
-    --fallback-backend none \
-    --hybrid
-done
+bash scripts/benchmark.sh
 ```
 
 ## Scorer Architecture
@@ -224,6 +164,8 @@ The scorer uses frozen target-model token embeddings (via `token_proj`) and draf
 ├── dflash.py                    # DFlash generation + timing utilities
 ├── distributed.py               # Multi-GPU distributed utilities
 ├── requirements.txt
+├── assets/
+│   └── pipeline.png             # Method overview figure
 ├── model/
 │   ├── __init__.py
 │   ├── dflash.py                # DFlash draft model
@@ -241,9 +183,12 @@ The scorer uses frozen target-model token embeddings (via `token_proj`) and draf
 │   └── tree.py                  # Verification tree compilation
 └── scripts/
     ├── collect_trace.py         # Trace collection script
-    └── train_scorer.py          # Scorer training script
+    ├── train_scorer.py          # Scorer training script
+    ├── collect_traces.sh        # Step 1: run trace collection
+    ├── train.sh                 # Step 2: run scorer training
+    └── benchmark.sh             # Step 3: run full benchmark
 ```
 
 ## Acknowledgements
 
-TAPS builds on the [DDTree](https://github.com/z-lab/dflash) and [DFlash](https://github.com/z-lab/dflash) speculative decoding framework. We thank the authors of [Domino](https://github.com/jianuo-huang/Domino) for their open-source implementation of fused speculative decoding kernels, which inspired the overhead optimization in this work.
+TAPS builds on the [DDTree](https://github.com/z-lab/dflash) and [DFlash](https://github.com/z-lab/dflash) speculative decoding framework.
