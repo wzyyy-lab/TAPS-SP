@@ -115,16 +115,7 @@ Traces record draft logits, candidate tries, and target-model acceptance labels 
 bash scripts/collect_traces.sh
 ```
 
-This collects 200 prompts per dataset (800 total) from four diverse domains. Each prompt produces multiple decoding rounds, yielding thousands of training records. On a single A800 GPU, expect ~2 hours per dataset.
-
-Training datasets for traces:
-
-| Dataset | Prompts | Domain |
-| --- | --- | --- |
-| `alpaca` | 200 | Instruction following |
-| `sharegpt` | 200 | Multi-turn chat |
-| `codealpaca` | 200 | Code |
-| `math` | 200 | Math reasoning |
+On a single A800 GPU, expect ~2 hours per dataset.
 
 ### Step 2: Train Scorer
 
